@@ -19,7 +19,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var mouseEventMonitor: Any?
 
     // Default value to initialize userIdleSeconds to
-    private static let defaultUserIdleSeconds: TimeInterval = 120
+    private static let defaultUserIdleSeconds: TimeInterval = 60
 
     // User configurable idle time in seconds (defaults to 2 minutes)
     private var userIdleSeconds: TimeInterval = defaultUserIdleSeconds
