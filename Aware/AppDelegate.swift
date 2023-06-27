@@ -10,49 +10,56 @@ import Cocoa
 
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var timerStart: Date = Date()
+    private var timerStart: DispatchTime = .now()
 
     // Redraw button every minute
-    let buttonRefreshRate: TimeInterval = 60
+    private let buttonRefreshRate: TimeInterval = 0.1
 
     // Reference to installed global mouse event monitor
-    var mouseEventMonitor: Any?
+    private var mouseEventMonitor: Any?
 
     // Default value to initialize userIdleSeconds to
-    static let defaultUserIdleSeconds: TimeInterval = 120
+    private static let defaultUserIdleSeconds: TimeInterval = 60
 
     // User configurable idle time in seconds (defaults to 2 minutes)
-    var userIdleSeconds: TimeInterval = defaultUserIdleSeconds
+    private var userIdleSeconds: TimeInterval = defaultUserIdleSeconds
 
-    func readUserIdleSeconds() -> TimeInterval {
-        let defaultsValue = UserDefaults.standard.object(forKey: "userIdleSeconds") as? TimeInterval
-        return defaultsValue ?? type(of: self).defaultUserIdleSeconds
-    }
+    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
-    let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     @IBOutlet weak var menu: NSMenu! {
-        didSet {
-            statusItem.menu = menu
-        }
+        didSet { statusItem.menu = menu }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        statusItem.button?.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
         self.userIdleSeconds = self.readUserIdleSeconds()
 
         updateButton()
-        let _ = Timer.scheduledTimer(buttonRefreshRate, userInfo: nil, repeats: true) { _ in self.updateButton() }
+
+        let timer = Timer.scheduledTimer(buttonRefreshRate, userInfo: nil, repeats: true) { _ in self.updateButton() }
+        RunLoop.current.add(timer, forMode: .common)
 
         let notificationCenter = NSWorkspace.shared.notificationCenter
         notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: nil) { _ in self.resetTimer() }
         notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: nil) { _ in self.resetTimer() }
     }
+}
 
-    func resetTimer() {
-        timerStart = Date()
+extension AppDelegate {
+    private static let userActivityEventTypes: [CGEventType] = [
+        .leftMouseDown,
+        .rightMouseDown,
+        .mouseMoved,
+        .keyDown,
+        .scrollWheel
+    ]
+
+    private func resetTimer() {
+        timerStart = .now()
         updateButton()
     }
 
-    func onMouseEvent(_ event: NSEvent) {
+    private func onMouseEvent(_ event: NSEvent) {
         if let eventMonitor = mouseEventMonitor {
             NSEvent.removeMonitor(eventMonitor)
             mouseEventMonitor = nil
@@ -60,28 +67,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateButton()
     }
 
-    func updateButton() {
-        var idle: Bool
-
-        if (self.sinceUserActivity() > userIdleSeconds) {
-            timerStart = Date()
-            idle = true
-        } else if (CGDisplayIsAsleep(CGMainDisplayID()) == 1) {
-            timerStart = Date()
-            idle = true
-        } else {
-            idle = false
-        }
+    private func updateButton() {
+        let idle: Bool = {
+            if sinceUserActivity() > userIdleSeconds {
+                timerStart = .now()
+                return true
+            } else if CGDisplayIsAsleep(CGMainDisplayID()) == 1 {
+                timerStart = .now()
+                return true
+            }
+            return false
+        }()
         
         if let statusButton = statusItem.button {
-            let duration = Date().timeIntervalSince(timerStart)
+            let duration = timerStart.distance(to: .now()).timeInterval
             let title = NSTimeIntervalFormatter().stringFromTimeInterval(duration)
             
             statusButton.title = title
             statusButton.appearsDisabled = idle
         }
 
-        if (idle) {
+        if idle {
             // On next mouse event, immediately update button
             if mouseEventMonitor == nil {
                 mouseEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [
@@ -92,15 +98,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    let userActivityEventTypes: [CGEventType] = [
-        .leftMouseDown,
-        .rightMouseDown,
-        .mouseMoved,
-        .keyDown,
-        .scrollWheel
-    ]
+    private func sinceUserActivity() -> CFTimeInterval {
+        return Self.userActivityEventTypes.map {
+            CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0)
+        }.min()!
+    }
 
-    func sinceUserActivity() -> CFTimeInterval {
-        return userActivityEventTypes.map { CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0) }.min()!
+    private func readUserIdleSeconds() -> TimeInterval {
+        let defaultsValue = UserDefaults.standard.object(forKey: "userIdleSeconds") as? TimeInterval
+        return defaultsValue ?? type(of: self).defaultUserIdleSeconds
     }
 }
