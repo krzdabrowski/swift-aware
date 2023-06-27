@@ -10,30 +10,24 @@ import Cocoa
 
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var timerStart: DispatchTime = .now()
+    private var timerStart: DispatchTime = .now()
 
     // Redraw button every minute
-    let buttonRefreshRate: TimeInterval = 0.1
+    private let buttonRefreshRate: TimeInterval = 0.1
 
     // Reference to installed global mouse event monitor
-    var mouseEventMonitor: Any?
+    private var mouseEventMonitor: Any?
 
     // Default value to initialize userIdleSeconds to
-    static let defaultUserIdleSeconds: TimeInterval = 120
+    private static let defaultUserIdleSeconds: TimeInterval = 120
 
     // User configurable idle time in seconds (defaults to 2 minutes)
-    var userIdleSeconds: TimeInterval = defaultUserIdleSeconds
+    private var userIdleSeconds: TimeInterval = defaultUserIdleSeconds
 
-    func readUserIdleSeconds() -> TimeInterval {
-        let defaultsValue = UserDefaults.standard.object(forKey: "userIdleSeconds") as? TimeInterval
-        return defaultsValue ?? type(of: self).defaultUserIdleSeconds
-    }
+    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
-    let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     @IBOutlet weak var menu: NSMenu! {
-        didSet {
-            statusItem.menu = menu
-        }
+        didSet { statusItem.menu = menu }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -48,13 +42,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: nil) { _ in self.resetTimer() }
         notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: nil) { _ in self.resetTimer() }
     }
+}
 
-    func resetTimer() {
+extension AppDelegate {
+    private static let userActivityEventTypes: [CGEventType] = [
+        .leftMouseDown,
+        .rightMouseDown,
+        .mouseMoved,
+        .keyDown,
+        .scrollWheel
+    ]
+
+    private func resetTimer() {
         timerStart = .now()
         updateButton()
     }
 
-    func onMouseEvent(_ event: NSEvent) {
+    private func onMouseEvent(_ event: NSEvent) {
         if let eventMonitor = mouseEventMonitor {
             NSEvent.removeMonitor(eventMonitor)
             mouseEventMonitor = nil
@@ -62,19 +66,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateButton()
     }
 
-    func updateButton() {
-        var idle: Bool
-
-        let since = sinceUserActivity()
-        if (since > userIdleSeconds) {
-            timerStart = .now()
-            idle = true
-        } else if (CGDisplayIsAsleep(CGMainDisplayID()) == 1) {
-            timerStart = .now()
-            idle = true
-        } else {
-            idle = false
-        }
+    private func updateButton() {
+        let idle: Bool = {
+            if sinceUserActivity() > userIdleSeconds {
+                timerStart = .now()
+                return true
+            } else if CGDisplayIsAsleep(CGMainDisplayID()) == 1 {
+                timerStart = .now()
+                return true
+            }
+            return false
+        }()
         
         if let statusButton = statusItem.button {
             let duration = timerStart.distance(to: .now()).timeInterval
@@ -84,7 +86,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             statusButton.appearsDisabled = idle
         }
 
-        if (idle) {
+        if idle {
             // On next mouse event, immediately update button
             if mouseEventMonitor == nil {
                 mouseEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [
@@ -95,15 +97,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    let userActivityEventTypes: [CGEventType] = [
-        .leftMouseDown,
-        .rightMouseDown,
-        .mouseMoved,
-        .keyDown,
-        .scrollWheel
-    ]
+    private func sinceUserActivity() -> CFTimeInterval {
+        return Self.userActivityEventTypes.map {
+            CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0)
+        }.min()!
+    }
 
-    func sinceUserActivity() -> CFTimeInterval {
-        return userActivityEventTypes.map { CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0) }.min()!
+    private func readUserIdleSeconds() -> TimeInterval {
+        let defaultsValue = UserDefaults.standard.object(forKey: "userIdleSeconds") as? TimeInterval
+        return defaultsValue ?? type(of: self).defaultUserIdleSeconds
     }
 }
