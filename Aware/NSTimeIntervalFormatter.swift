@@ -18,11 +18,15 @@ class NSTimeIntervalFormatter {
         - Returns: A `String`.
      */
     func stringFromTimeInterval(_ interval: TimeInterval) -> String {
-        let minutes = NSInteger(interval) / 60
-        if minutes < 60 {
-            return "\(minutes)m"
-        } else {
-            return "\(minutes / 60)h \(minutes % 60)m"
+        let intervalInteger = NSInteger(interval)
+        let seconds = intervalInteger % 60
+        var minutes: Int { (intervalInteger / 60) % 60 }
+        var hours: Int { (intervalInteger / 3600) }
+        switch interval {
+        case 0 ... 60 * 60:
+            return String(format: "%0.2d:%0.2d", minutes, seconds)
+        default:
+            return String(format: "%0.2d:%0.2d:%0.2d", hours, minutes, seconds)
         }
     }
 }
