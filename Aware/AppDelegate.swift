@@ -31,6 +31,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        statusItem.button?.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
         self.userIdleSeconds = self.readUserIdleSeconds()
 
         updateButton()
