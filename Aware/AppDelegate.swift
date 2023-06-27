@@ -10,10 +10,10 @@ import Cocoa
 
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var timerStart: Date = Date()
+    var timerStart: DispatchTime = .now()
 
     // Redraw button every minute
-    let buttonRefreshRate: TimeInterval = 60
+    let buttonRefreshRate: TimeInterval = 0.1
 
     // Reference to installed global mouse event monitor
     var mouseEventMonitor: Any?
@@ -40,7 +40,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         self.userIdleSeconds = self.readUserIdleSeconds()
 
         updateButton()
-        let _ = Timer.scheduledTimer(buttonRefreshRate, userInfo: nil, repeats: true) { _ in self.updateButton() }
+
+        let timer = Timer.scheduledTimer(buttonRefreshRate, userInfo: nil, repeats: true) { _ in self.updateButton() }
+        RunLoop.current.add(timer, forMode: .common)
 
         let notificationCenter = NSWorkspace.shared.notificationCenter
         notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: nil) { _ in self.resetTimer() }
@@ -48,7 +50,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func resetTimer() {
-        timerStart = Date()
+        timerStart = .now()
         updateButton()
     }
 
@@ -63,18 +65,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func updateButton() {
         var idle: Bool
 
-        if (self.sinceUserActivity() > userIdleSeconds) {
-            timerStart = Date()
+        let since = sinceUserActivity()
+        if (since > userIdleSeconds) {
+            timerStart = .now()
             idle = true
         } else if (CGDisplayIsAsleep(CGMainDisplayID()) == 1) {
-            timerStart = Date()
+            timerStart = .now()
             idle = true
         } else {
             idle = false
         }
         
         if let statusButton = statusItem.button {
-            let duration = Date().timeIntervalSince(timerStart)
+            let duration = timerStart.distance(to: .now()).timeInterval
             let title = NSTimeIntervalFormatter().stringFromTimeInterval(duration)
             
             statusButton.title = title
